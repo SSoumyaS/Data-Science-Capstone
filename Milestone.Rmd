@@ -1,0 +1,161 @@
+---
+title: "Milestone Report"
+author: "Soumya Satyakanta Sethi"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data & R packages
+
+### Required R packages
+
+Before starting the analysis, we load the required R packages.
+
+```{r message=FALSE, warning=FALSE}
+library(tm)
+library(stringi)
+library(kableExtra)
+library(wordcloud)
+library(RColorBrewer)
+```
+
+### Accessing the Data
+
+We first downloades the data from the link given in the Coursera **Data Science Capstone** course page and the downloaded .rar file was extracted. Here we assign the path for accessing the data and then we read the data. Here, we read the en_US.blogs.txt, en_US.news.txt and en_US.twitter.txt files.
+
+```{r message=FALSE, warning=FALSE}
+
+fpath <- file.path("F:/Coursera_Projects/DataScience_Capstone/final")
+
+#Setting file paths to access the file directly
+path_blog <- file.path(fpath,"/en_US/en_US.blogs.txt")
+path_news <- file.path(fpath,"/en_US/en_US.news.txt")
+path_twitter <- file.path(fpath,"/en_US/en_US.twitter.txt")
+
+#Read in text files
+dat_blog <- readLines(path_blog, encoding="UTF-8", skipNul=TRUE)
+dat_twitter <- readLines(path_twitter, encoding="UTF-8", skipNul=TRUE)
+dat_news <- readLines(path_news, encoding="UTF-8", skipNul=TRUE)
+```
+
+## Data Overview
+In order to get a sense of what the data looks like, we have summerized the main information from each of the 3 datasets (Blog, News and Twitter). The details are given below.
+
+```{r}
+stats <- data.frame(
+  FileName=c("US Blogs","US News","US Twitter"),
+  FileSizeinMB=c(file.info(path_blog)$size/1024^2,
+                 file.info(path_news)$size/1024^2,
+                 file.info(path_twitter)$size/1024^2),
+  t(rbind(sapply(list(dat_blog,dat_news,dat_twitter),
+                 stri_stats_general),
+          WordCount= 
+            sapply(list(dat_blog,dat_news,dat_twitter),
+                   stri_stats_latex)[4,]))
+)
+kable(stats)
+```
+
+## Sample Data Extraction
+As the table above shows, the amount of data in this set is huge. that will need a lot of computation power. Therefore I choose to limit the data.
+
+```{r include=FALSE}
+sampleBlogs <- dat_blog[rbinom(length(dat_blog)*.002, 
+                            length(dat_blog), .5)]
+sampleNews <- dat_news[rbinom(length(dat_news)*.002, 
+                          length(dat_news), .5)]
+sampleTwitter <- dat_twitter[rbinom(length(dat_twitter)*.002, 
+                                length(dat_twitter), .5)]
+
+#remove the unicode characters
+sampleBlogs <- stri_replace_all_regex(sampleBlogs, "\u2018|\u2026|\u201c|\u201d|\u2019","")
+sampleNews <- stri_replace_all_regex(sampleNews, "\u2018|\u2019|\u2026|\u201c|\u201d\u2019","")
+sampleTwitter <- stri_replace_all_regex(sampleTwitter, "\u2018|\u2026|\u201c|\u201d|\u2019","")
+
+Data_subset <- c(sampleBlogs,sampleNews,sampleTwitter)
+
+```
+
+
+## Sample Statistics
+
+To get an idea of what tthe data now looks like after extracting the sample, we summerize the statistical information about the data.
+
+```{r}
+Sample_stats <- data.frame(
+  FileName=c("Sample US Blogs",
+             "Sample US News","Sample US Twitter"),
+  t(rbind(sapply(list(sampleBlogs,sampleNews,sampleTwitter),
+                 stri_stats_general),
+          WordCount= 
+            sapply(list(sampleBlogs,sampleNews,sampleTwitter),
+                   stri_stats_latex)[4,]))
+)
+kable(Sample_stats)
+```
+
+```{r include=FALSE}
+rm(fpath,path_blog,path_news,path_twitter, stats)
+rm(dat_blog,dat_news,dat_twitter)
+rm(sampleBlogs,sampleNews,sampleTwitter)
+```
+
+## Clean the Data Sample
+After reducing the size of each data set that were loaded sampled data is used to create a corpus, and following clean up steps are performed. 
+
+```{r}
+removeNonASCII <- function(x) iconv(x, "latin1", "ASCII", sub="")
+removeURL <- function(x) gsub("http[[:alnum:]]*","",x)
+removeapo <- function(x) gsub("'","",x)
+removeSplChar <- 
+  function(x) gsub("/|@|//|$|:|:)|*|&|!|?|_|-|#|","",x)
+
+building.corpus <- function (x = Data_subset) {
+  corpus <- VCorpus(VectorSource(Data_subset))
+  corpus <- tm_map(corpus, removeNonASCII)
+  corpus <- tm_map(corpus, removeURL)
+  corpus <- tm_map(corpus, removeapo)
+  corpus <- tm_map(corpus, removeSplChar)
+  corpus <- tm_map(corpus, tolower)
+  corpus <- tm_map(corpus, removePunctuation)
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, removeWords,stopwords("english"))
+  corpus <- tm_map(corpus, removeWords,c("the", "will", "The",
+                   "also", "that", "and", "for", 
+                   "in", "is", "it", "not", "to"))
+  corpus <- tm_map(corpus, stripWhitespace)
+  corpus <- tm_map(corpus, PlainTextDocument)
+}
+fsample <- building.corpus(Data_subset)
+```
+
+## Exploratory Analysis
+To examine the data, we will produce a word clouds showing frequently used terms in the datasets. The word clouds show generally the top words with size varying by frequency.
+
+```{r}
+wordcloud(fsample, max.words=100, random.order=TRUE,
+          rot.per=.15,
+          colors=colorRampPalette(brewer.pal(5,"Dark2"))(32),
+          scale=c(3, .3))
+```
+
+Further. to visualise the frequency of different words in the sample, we made a distribution plot of the words.
+
+```{r}
+tdm <- TermDocumentMatrix(fsample)
+tdm_mat <- as.matrix(tdm)
+tdmfreq <- sort(rowSums(tdm_mat), decreasing = TRUE)
+```
+
+
+```{r}
+barplot(tdmfreq[1:30], 
+        col = "blue", las = 2, 
+        main = "Word Frequency of the data")
+```
+
+
+
